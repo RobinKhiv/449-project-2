@@ -63,3 +63,4 @@ def validate_word(
 
 
 if __name__ == "__main__":
+    uvicorn.run("validate:app", host="0.0.0.0", port=8000, log_level="info")
