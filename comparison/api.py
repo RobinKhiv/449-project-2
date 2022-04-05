@@ -8,10 +8,10 @@ import collections
 import contextlib
 import logging.config
 import sqlite3
-import typing
 
+from typing import Optional
 from datetime import datetime
-from fastapi import FastAPI, Depends, Response, HTTPException, status
+from fastapi import FastAPI, Depends, Response, HTTPException, status, Query
 from pydantic import BaseModel, BaseSettings
 
 
@@ -21,12 +21,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
-
-
-class words(BaseModel):
-    id: int
-    word: str
-
 
 
 def get_db():
@@ -45,21 +39,51 @@ app: FastAPI = FastAPI()
 logging.config.fileConfig(settings.logging_config)
 
 
-@app.post("/compare/{word}")
-def validate_word(
- word: str, response: Response, db: sqlite3.Connection = Depends(get_db)
-):
-    idForDay = round(((int(datetime.today().strftime('%Y%d%m'))* 3 / 13)* 23) % 2308)
+def retrieve_hash_id(worddate: int):
+    print('here', worddate)
+    wordDay = worddate if worddate else int(datetime.now().strftime('%m%d%Y'))
+
+    idForDay = round(((wordDay* 3 / 13)* 23) % 2308)
+    return idForDay
+
+
+# word of day service
+def wod_retrieval_service(id: int, db: sqlite3.Connection):
     try:
-        cur = db.execute("SELECT * FROM answer WHERE answerid = ? LIMIT 1", [idForDay])
-        wordOfDay = cur.fetchall()
+        cur = db.execute("SELECT * FROM answer WHERE answerid = ? LIMIT 1", [id])
+        word = cur.fetchall()
     except sqlite3.IntegrityError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"type": type(e).__name__, "msg": str(e)},
         )
+    return word
 
-    return wordOfDay
+
+# update word by id
+def wod_update_service(id: int, newWord: str, db: sqlite3.Connection):
+    try:
+        cur = db.execute("UPDATE answer SET Answer = ? WHERE answerid = ?", (newWord, id))
+        db.commit()
+    except sqlite3.IntegrityError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"type": type(e).__name__, "msg": str(e)},
+        )
+    return "Successfully updated word to '" + newWord + "'"
+
+
+@app.post("/compare/")
+def validate_word(word: str, response: Response, db: sqlite3.Connection = Depends(get_db), gameday: Optional[int] = Query(None, description="Enter date in MMDDYYY to check word against that specific date")):
+    id = retrieve_hash_id(gameday)
+    answer = wod_retrieval_service(id, db)
+    return answer
+
+
+@app.put("/check/update")
+def update_word(word: str,  response: Response, db: sqlite3.Connection = Depends(get_db), gameday: Optional[int] = Query(None, description="Enter date in MMDDYYY to change word for that specific date" )):
+    id = retrieve_hash_id(gameday)
+    return wod_update_service(id, word, db)
 
 
 if __name__ == "__main__":
