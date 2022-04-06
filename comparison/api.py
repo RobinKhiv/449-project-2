@@ -44,9 +44,12 @@ app: FastAPI = FastAPI()
 logging.config.fileConfig(settings.logging_config)
 
 
+# if user does not provide a game date then the function will return today's date
 def retrieve_game_date(worddate: int):
     return worddate if worddate else int(datetime.now().strftime('%m%d%Y'))
 
+
+# hash function to get id from specific date
 def retrieve_hash_id(worddate: int):
     idForDay = round(((worddate* 3 / 13)* 23) % 2308)
     return idForDay
@@ -81,7 +84,6 @@ def wod_update_service(id: int, newWord: str, db: sqlite3.Connection):
             status_code=status.HTTP_409_CONFLICT,
             detail={"type": type(e).__name__, "msg": str(e)},
         )
-
 
 
 #compare answer with input
@@ -166,7 +168,7 @@ def letter_find(answer: str, user_input:str):
         return constructed
 
 
-@app.post("/compare/")
+@app.post("/compare/", status_code=status.HTTP_200_OK)
 def validate_word_and_return_indexes_of_correct_and_incorrect(word: str, response: Response, db: sqlite3.Connection = Depends(get_db), gameday: Optional[int] = Query(None, description="Enter date in MMDDYYY to check word against that specific date")):
     gamedate = retrieve_game_date(gameday)
     id = retrieve_hash_id(gamedate)
@@ -175,7 +177,7 @@ def validate_word_and_return_indexes_of_correct_and_incorrect(word: str, respons
     return compare
 
 
-@app.put("/check/update")
+@app.put("/check/update", status_code=status.HTTP_201_CREATED)
 def update_answer(word: str,  response: Response, db: sqlite3.Connection = Depends(get_db), gameday: Optional[int] = Query(None, description="Enter date in MMDDYYY to change word for that specific date" )):
     gamedate = retrieve_game_date(gameday)
     id = retrieve_hash_id(gamedate)
