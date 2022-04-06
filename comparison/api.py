@@ -48,7 +48,6 @@ def retrieve_game_date(worddate: int):
     return worddate if worddate else int(datetime.now().strftime('%m%d%Y'))
 
 def retrieve_hash_id(worddate: int):
-    # wordDay = worddate if worddate else int(datetime.now().strftime('%m%d%Y'))
     idForDay = round(((worddate* 3 / 13)* 23) % 2308)
     return idForDay
 
