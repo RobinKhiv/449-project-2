@@ -4,15 +4,15 @@
 # <https://programminghistorian.org/en/lessons/creating-apis-with-python-and-flask>.
 #
 
-import collections
+
 import contextlib
 import logging.config
 import sqlite3
-import typing
+
 
 import uvicorn
 from fastapi import FastAPI, Depends, Response, HTTPException, status
-from pydantic import BaseModel, BaseSettings
+from pydantic import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -21,11 +21,6 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
-
-
-class Words(BaseModel):
-    id: int
-    word: str
 
 
 def get_db():
@@ -44,35 +39,40 @@ app: FastAPI = FastAPI()
 logging.config.fileConfig(settings.logging_config)
 
 
-@app.post("/validate/guess/{word}")
+# validate guess
+@app.post("/validate/guess")
 def validate_word(
         word: str, response: Response, db: sqlite3.Connection = Depends(get_db)
 ):
+    logging.info("validate word::" + word)
     if len(word) != 5:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="allowed word length is 5")
-
     cur = db.execute("SELECT * FROM words WHERE UPPER(word) = UPPER(?) LIMIT 1", [word])
     words = cur.fetchall()
     if not words:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail={"entered word is not a valid word":word}
+            status_code=status.HTTP_404_NOT_FOUND, detail={"entered word is not in the wordlist": word}
         )
     return {"isValidWord": "true"}
 
 
+# add new word to words db
 @app.post("/add/guess", status_code=status.HTTP_201_CREATED)
 def create_word(
-        words: Words, response: Response, db: sqlite3.Connection = Depends(get_db)
+        word: str, response: Response, db: sqlite3.Connection = Depends(get_db)
 ):
-    w = dict(words)
+    logging.info("adding word::" + word)
+    if len(word.strip()) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="word is empty")
     try:
         cur = db.execute(
             """
-            INSERT INTO WORDS(wordid, word)
-            VALUES(:id,:word)
+            INSERT INTO WORDS(word)
+            VALUES(:word)
             """,
-            w,
+            [word],
         )
         db.commit()
     except sqlite3.IntegrityError as e:
@@ -80,29 +80,29 @@ def create_word(
             status_code=status.HTTP_409_CONFLICT,
             detail={"type": type(e).__name__, "msg": str(e)},
         )
-    w["id"] = cur.lastrowid
-    response.headers["Location"] = f"/words/{w['id']}"
-    return w
+    return {"New word added : " + word}
 
 
+# remove existing word from words db
 @app.post("/remove/guess", status_code=status.HTTP_200_OK)
 def remove_word(
-        words: Words, response: Response, db: sqlite3.Connection = Depends(get_db)
+        word: str, response: Response, db: sqlite3.Connection = Depends(get_db)
 ):
-    w = dict(words)
+    logging.info("deleting word::" + word)
     cur = db.execute(
         """
-           DELETE  FROM words WHERE wordid = :id and word=:word
+           DELETE FROM words WHERE word=:word
             """,
-        w,
+        [word],
     )
+    print(cur.rowcount)
     if cur.rowcount == 0:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"no record exists for the id and word": w}
+            status_code=status.HTTP_404_NOT_FOUND, detail={"no record exists for the word ": word}
         )
+
     db.commit()
-    return w
+    return {"Word deleted ": word}
 
 
 if __name__ == "__main__":
